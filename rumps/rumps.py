@@ -481,6 +481,15 @@ class MenuItem(Menu):
         new_title = unicode(new_title)
         self._menuitem.setTitle_(new_title)
 
+        
+    @property
+    def view(self):
+        return self._menuitem.view()
+
+    @view.setter
+    def view(self, new_view):
+        self._menuitem.setView_(new_view)
+             
     @property
     def icon(self):
         """The path to an image displayed next to the text for this menu item. If set to ``None``, the current image
