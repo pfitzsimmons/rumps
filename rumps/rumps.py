@@ -13,9 +13,11 @@ except ImportError:
     _NOTIFICATIONS = False
 
 from Foundation import (NSDate, NSTimer, NSRunLoop, NSDefaultRunLoopMode, NSSearchPathForDirectoriesInDomains,
-                        NSMakeRect, NSLog, NSObject)
-from AppKit import NSApplication, NSStatusBar, NSMenu, NSMenuItem, NSAlert, NSTextField, NSImage
+                        NSMakeRect, NSLog, NSObject, NSPoint)
+import AppKit
+from AppKit import NSApplication, NSStatusBar, NSMenu, NSMenuItem, NSAlert, NSTextField, NSImage, NSPopover, NSMinYEdge, NSButton, NSViewController, NSBundle, NSWindow, NSTitledWindowMask, NSBackingStoreBuffered, NSEvent, NSLeftMouseDownMask, NSRightMouseDownMask
 from PyObjCTools import AppHelper
+import objc
 
 import os
 import weakref
@@ -562,6 +564,7 @@ class MenuItem(Menu):
         NSApp._ns_to_py_and_callback[self._menuitem] = self, callback
         self._menuitem.setAction_('callback:' if callback is not None else None)
 
+        
     @property
     def callback(self):
         """Return the current callback function.
@@ -737,7 +740,7 @@ class Window(object):
         If not a string, will use the string representation of the object.
         """
         return self._default_text
-
+ 
     @default_text.setter
     def default_text(self, new_text):
         new_text = unicode(new_text)
@@ -844,6 +847,15 @@ class Response(object):
         return self._text
 
 
+class PopViewController(NSViewController):
+    def loadView(self):
+        import pdb; pdb.set_trace()
+        self.setView_(NSView.alloc().init())
+
+class MyWindow(NSWindow):
+    def canBecomeKeyWindow(self):
+        return True
+        
 class NSApp(NSObject):
     """Objective-C delegate class for NSApplication. Don't instantiate - use App instead."""
 
@@ -867,6 +879,16 @@ class NSApp(NSObject):
         self.setStatusBarIcon()
         self.setStatusBarTitle()
 
+        self._init_popover()
+        return
+    
+        if self._app.get("_menu"):
+            self._init_menu()
+        else:
+            self._init_popover()
+            
+        
+    def _init_menu(self):
         mainmenu = self._app['_menu']
         quit_button = self._app['_quit_button']
         if quit_button is not None:
@@ -877,6 +899,118 @@ class NSApp(NSObject):
                  'should have a callback of quit_application or call it indirectly.')
         self.nsstatusitem.setMenu_(mainmenu._menu)  # mainmenu of our status bar spot (_menu attribute is NSMenu)
 
+    def _init_popover(self):
+        print 'init popover'
+        #import pdb; pdb.set_trace()
+        rect = NSMakeRect(0, 0, 40, 40)
+        self.button = NSButton.alloc().initWithFrame_(rect)
+        self.button.setImage_(self._app['_icon_nsimage'])
+        self.button.setAction_('mycallback:')
+        #self.button.setTransparent_(True)
+        self.button.setBordered_(False)
+        self.button.setTitle_('W')
+        self.button.setButtonType_(AppKit.NSMomentaryChangeButton)
+
+        print 'BUTTON ', self.nsstatusitem.action
+        #rect2 = NSMakeRect(0, 0, 100, 100)
+        self.popover = NSPopover.alloc().init()
+        #myBundle = NSBundle bundleWithPath:@"/Library/MyBundle.bundle"]
+        myBundle = NSBundle.alloc().initWithPath_("/Users/pfitzsimmons/repos/webchiver/app/webchiver.bundle")
+        #view_controller = NSViewController.alloc().initWithNibName_bundle_('SnippetPopoverViewController.nib', myBundle)
+        view_controller = PopViewController.alloc().init()
+        #self.popover.setContentViewController_(view_controller)
+        #self.nsstatusitem.setAction_('mycallback:')
+        self.nsstatusitem.setView_(self.button)
+        #import pdb; pdb.set_trace()
+
+        rect3 = NSMakeRect(500, 500, 600, 600)
+        self.window = MyWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+            rect3,
+            AppKit.NSBorderlessWindowMask,
+            #AppKit.NSTexturedBackgroundWindowMask,
+            NSBackingStoreBuffered,
+            True
+            )
+        self.window.setOpaque_(False)
+        
+        #self.window.setContentViewController_(view_controller)
+        
+        
+    @objc.IBAction
+    def mycallback_(self, sender):
+        self.toggle_popover()
+
+    _shown = False
+    def toggle_popover(self):
+        print 'toggle popover!'
+        if self._shown:
+            self.close_popover()
+        else:
+            self.show_popover()
+
+    on_show_handler = None
+            
+    def on_show_callback(self):
+        if self.on_show_callback != None:
+            self.on_show_handler()
+            
+    def show_popover(self):
+
+        self.on_show_callback()
+        
+        bounds = self.button.bounds()
+        print 'BOUNDS ', bounds
+        
+        
+        print 'show popover'
+
+        #NSWindow *window = [[[NSApplication sharedApplication] currentEvent] window];
+        window = NSApplication.sharedApplication().currentEvent().window()
+        x = NSApplication.sharedApplication().currentEvent().window().frame().origin.x
+        y = NSApplication.sharedApplication().currentEvent().window().frame().origin.y
+
+        x = x - 300
+        if x < 0:
+            x = 0
+        y = y - 20
+        point = NSPoint(x, y)
+        #point.setX_(x)
+        #point.setY_(y)
+        self.window.setFrameOrigin_(point)
+        from Cocoa import NSApp as CocoaNSApp
+        CocoaNSApp.activateIgnoringOtherApps_(True)
+        #NSApp.activateIgnoringOtherApps_(True)
+        self.window.makeKeyAndOrderFront_(self.window)
+        #NSApplication.sharedApplication().activateIgnoringOtherApps(True)
+        
+        self._shown = True
+        #self.popover.showRelativeToRect_ofView_preferredEdge_(
+        #    self.button.bounds(),
+        #    self.button,
+        #    NSMinYEdge
+        #)
+        def global_click(evt):
+            print 'Global click!'
+            self.close_popover()
+        
+        self.monitor = NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
+            NSLeftMouseDownMask | NSRightMouseDownMask,
+            global_click
+        )
+
+    def globalClick(self):
+        print 'globalClick'
+        if self._shown:
+            self.close_popover()
+            
+        
+    def close_popover(self):
+        print 'close popover'
+        self.window.orderOut_(self.window)
+        self._shown = False
+        NSEvent.removeMonitor_(self.monitor)
+    
+        
     def setStatusBarTitle(self):
         self.nsstatusitem.setTitle_(self._app['_title'])
         self.fallbackOnName()
@@ -891,6 +1025,7 @@ class NSApp(NSObject):
 
     @classmethod
     def callback_(cls, nsmenuitem):
+        print 'CALL BACK!!!', nsmenuitem
         self, callback = cls._ns_to_py_and_callback[nsmenuitem]
         _log(self)
         return _call_as_function_or_method(callback, self)
@@ -1040,6 +1175,9 @@ class App(object):
         """
         return open(os.path.join(self._application_support, args[0]), *args[1:])
 
+    def on_run(self):
+        pass
+    
     # Run the application
     #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -1076,5 +1214,5 @@ class App(object):
         del t, b
 
         self._nsapp.initializeStatusBar()
-
+        self.on_run()
         AppHelper.runEventLoop()
